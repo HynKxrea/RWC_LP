@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 import tempfile
+import re
 
 #from st_chat_message import message
 from dotenv import load_dotenv
@@ -20,6 +21,7 @@ class LPSolver:
 
         # Initialize models and tools
         self.image_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o")
+        self.math_to_math_model = ChatOpenAI(temperature=0, model_name="gpt-4o")
         self.math_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o-mini")
         self.python_tool = PythonREPL()
 
@@ -49,6 +51,20 @@ class LPSolver:
             user_prompt=self.user_prompt
         )
         return multimodal_model.invoke(image_path)
+    
+    def check_math_again(self, math_problem: str) -> str:
+        prompt = PromptTemplate.from_template(
+            """
+            주어진 {math}를 standard form으로 다시 작성해줘.
+            괄호는 모두 벗겨서 수식으로 적고, 조건식은 아래와 같이 좌변에는 변수들만 남게 하고 우변에는 상수만 남겨줘.
+            ex. 4y_1 - y_2 <= 200 
+            조건식의 부등호는 <=이도록 식을 정리해줘. LaTeX를 사용하지 말고 적어줘.
+
+            최종 출력값은 미사여구를 다 제외하고 수식만 적어줘.
+            """
+        )
+        chain = prompt | self.math_to_math_model | StrOutputParser()
+        return chain.invoke({"math": math_problem})
 
     def generate_scipy_code(self, problem_description: str) -> str:
         prompt = PromptTemplate.from_template(
@@ -80,21 +96,47 @@ class LPSolver:
             return self.python_tool.run(code)
         except Exception as e:
             return f"Failed to execute.\nCode: {code}\nError: {type(e).__name__} - {e}"
-
-    def solve_lp_problem(self, image_path: str) -> str:
+        
+    def check_ans(self, answer: str) -> int:
+        # 정규 표현식을 사용해 'Objective value' 뒤의 숫자 추출
+        match = re.search(r"Objective value: (\d+\.?\d*)", answer)
+        
+        if match:
+            # 추출한 숫자를 반환 (소수점을 포함한 숫자도 처리)
+            return int(float(match.group(1)))  # 소수점이 있을 수 있으므로 float로 변환 후 int로 변환
+        else:
+            raise ValueError("Objective value not found in the answer.")
+        
+    def solve_1(self, image_path: str) -> str:
         # Step 1: Extract math problem from image
         math_problem = self.extract_math_problem(image_path)
-        print("Extracted Math Problem:", math_problem)
 
-        # Step 2: Generate Python code for solving the problem
-        scipy_code = self.generate_scipy_code(math_problem)
+        # Step 2:  Check the problem again to suit the code
+        check_math_again = self.check_math_again(math_problem)
+        print("Standard Form:\n", check_math_again)
+        print("----------------------------------------------")
+
+        return check_math_again
+
+    def solve_2(self, check_math_again: str) -> str:
+        # Step 3: Generate Python code for solving the problem
+        scipy_code = self.generate_scipy_code(check_math_again)
         print("Generated SciPy Code:\n", scipy_code)
+        print("----------------------------------------------")
 
         # Step 3: Execute the generated code
         result = self.execute_code(scipy_code)
         print("Execution Result:", result)
+        print("----------------------------------------------")
 
         return result
+    
+
+    def remove_latex(self, response):
+        # LaTeX 포맷의 부분을 제거하거나 단순화
+        cleaned_response = re.sub(r'\$.*?\$', '', response)  # $...$ 형태 제거
+        return cleaned_response
+    
         
     def main(self):
         # 가운데 정렬
@@ -110,29 +152,66 @@ class LPSolver:
                 3. Modify your answer and practice. 
                 
                 """)
+        st.markdown("---")
+
+        
+        # 세션 상태 관리
+        if "standard_form" not in st.session_state:
+            st.session_state.standard_form = None
+        if "answer" not in st.session_state:
+            st.session_state.answer = None
+        if "modeling_completed" not in st.session_state:
+            st.session_state.modeling_completed = False
 
         uploaded_file = st.file_uploader("PNG 파일을 업로드하세요", type="png")
-    
+
         if uploaded_file:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image.", use_container_width=True)
-
+            st.image(image, caption="Uploaded Image Problem.", use_container_width=True)
             with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
                 image.save(tmp_file)
                 tmp_file_path = tmp_file.name
-            ##문제파일을 파일경로를 통해 받았었는데, streamlit에서는 png 파일을 통해 받아서 받은 파일을 임시 경로에 저장해서 그 경로를 이용했다.
 
-            answer=solver.solve_lp_problem(tmp_file_path)
-            st.markdown(f"""
-                <div style="border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
-                <h4 style="color: #333;">Answer:</h4>
-                <p style="color: #555;">{answer}</p>
-                </div>
-            """, unsafe_allow_html=True)
+            # 모델링 시작 버튼
+            if st.button("모델링 시작"):
+                with st.spinner("문제 상황을 LP 모델링하는 중입니다..."):
+                    st.session_state.standard_form = solver.solve_1(tmp_file_path)
+                    st.session_state.standard =solver.remove_latex(st.session_state.standard_form)
+                    st.session_state.answer = solver.solve_2(st.session_state.standard_form)
+                    st.session_state.value = solver.check_ans(st.session_state.answer)
+                    st.session_state.modeling_completed = True  # 모델링 완료 상태 업데이트
+                st.success("모델링이 완료되었습니다!")
 
-            # message("Hello world!", is_user=True)
-            # message("Hi")
-            
+        # 모델링 완료 후 버튼 표시
+        if st.session_state.modeling_completed:
+            if st.button("Standard Form 확인하기"):
+                st.markdown(f"""
+                    <div style="border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; background-color: #f0f0f0;">
+                        <h4 style="color: #333;">Standard Form:</h4>
+                        <div style="color: #333; font-family: Arial, sans-serif;">{st.session_state.standard}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            user_answer = st.text_area("나의 답을 입력하세요:", height=100)
+
+            if st.button("Answer 확인하기"):
+                if user_answer.strip():  # 사용자가 답을 입력한 경우
+                    user_int = int(user_answer.strip())
+                    if user_int == st.session_state.value:
+                        st.success("정답입니다! 🎉")
+                    else:
+                        st.error("틀린 답입니다. 다시 시도하세요.")
+                else:
+                    st.warning("답을 입력해 주세요.")  # 답이 비어 있는 경우
+
+            if st.button("Answer 바로 확인하기"):
+                st.markdown(f"""
+                    <div style="border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
+                        <h4 style="color: #333;">Answer:</h4>
+                        <p style="color: #555;">{st.session_state.answer}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                
 
 if __name__ == "__main__":
     solver = LPSolver()
