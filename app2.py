@@ -174,7 +174,7 @@ class LPSolver:
 
             # 모델링 시작 버튼
             if st.button("모델링 시작"):
-                with st.spinner("문제상황을 LP모델링하는 중입니다..."):
+                with st.spinner("문제 상황을 LP 모델링하는 중입니다..."):
                     st.session_state.standard_form = solver.solve_1(tmp_file_path)
                     st.session_state.standard =solver.remove_latex(st.session_state.standard_form)
                     st.session_state.answer = solver.solve_2(st.session_state.standard_form)
@@ -209,12 +209,6 @@ class LPSolver:
                     <div style="border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
                         <h4 style="color: #333;">Answer:</h4>
                         <p style="color: #555;">{st.session_state.answer}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.markdown(f"""
-                    <div style="border: 2px solid #4CAF50; padding: 20px; border-radius: 10px; background-color: #f9f9f9;">
-                        <h4 style="color: #333;">Answer:</h4>
-                        <p style="color: #555;">{st.session_state.value}</p>
                     </div>
                 """, unsafe_allow_html=True)
                 
