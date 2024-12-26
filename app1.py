@@ -108,7 +108,6 @@ class LPSolver:
                 1. Upload your LP problem that you cannot solve.
                 2. Check the formulation and compare with yours.
                 3. Modify your answer and practice. 
-                
                 """)
 
         uploaded_file = st.file_uploader("PNG 파일을 업로드하세요", type="png")
