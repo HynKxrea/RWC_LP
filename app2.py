@@ -20,9 +20,9 @@ class LPSolver:
         os.environ["LANGCHAIN_PROJECT"] = "Real World Challenge_LP SOLVER"
 
         # Initialize models and tools
-        self.image_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o")
-        self.math_to_math_model = ChatOpenAI(temperature=0, model_name="gpt-4o")
-        self.math_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o-mini")
+        self.image_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o-mini")
+        self.math_to_math_model = ChatOpenAI(temperature=0, model_name="gpt-4o-mini")
+        self.math_to_code_model = ChatOpenAI(temperature=0, model_name="gpt-4o")
         self.python_tool = PythonREPL()
 
         # Initialize system and user prompts
